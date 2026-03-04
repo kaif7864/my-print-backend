@@ -4,15 +4,12 @@ import base64
 
 def extract_aadhaar_details(pdf_path):
     doc = pymupdf.open(pdf_path)
-
     text = ""
+
     for page in doc:
         text += page.get_text()
 
-    # Keep original for vertical fix
     raw_text = text
-
-    # Clean text for normal extraction
     text_clean = text.replace("\n", " ")
 
     # ---------------- NAME ----------------
@@ -34,8 +31,12 @@ def extract_aadhaar_details(pdf_path):
     dob = dob_match.group(1) if dob_match else ""
 
     # ---------------- GENDER ----------------
-    gender_match = re.search(r"(पुरुष/ MALE|महिला/ FEMALE)", text)
-    gender = gender_match.group(1) if gender_match else ""
+    gender_match = re.search(r"(पुरुष/ MALE|महिला/ FEMALE|MALE|FEMALE)", text, re.IGNORECASE)
+    gender_key = "M"
+    if gender_match:
+        g_raw = gender_match.group(1).upper()
+        if "FEMALE" in g_raw or "महिला" in g_raw:
+            gender_key = "F"
 
     # ---------------- AADHAAR NUMBER ----------------
     aadhaar_numbers = re.findall(r"\b\d{4}\s\d{4}\s\d{4}\b", text)
@@ -47,7 +48,6 @@ def extract_aadhaar_details(pdf_path):
 
     # ---------------- VERTICAL DATE FIX ----------------
     compact_text = raw_text.replace("\n", "").replace(" ", "")
-
     issued_match = re.search(r"Aadhaarno\.issued:(\d{2}/\d{2}/\d{4})", compact_text)
     issued_date = issued_match.group(1) if issued_match else ""
 
@@ -56,47 +56,52 @@ def extract_aadhaar_details(pdf_path):
 
     # ---------------- ADDRESS ----------------
     address_match = re.search(r"Address:\s*(.*?)Uttarakhand", text, re.DOTALL)
-    address = "Address: " + address_match.group(1).strip() + " Uttarakhand 249407" if address_match else ""
+    address =  address_match.group(1).strip() + " Uttarakhand 249407" if address_match else ""
 
     hindi_address_match = re.search(r"पता:\s*(.*?)249407", text, re.DOTALL)
-    hindi_address = "पता:" + hindi_address_match.group(1).strip() + "249407" if hindi_address_match else ""
+    hindi_address = "पता:\n" + hindi_address_match.group(1).strip() + "249407" if hindi_address_match else ""
 
-    # ---------------- IMAGE EXTRACTION ----------------
+    # ---------------- SMART PHOTO EXTRACTION ----------------
+# ... (बाकी कोड समान रहेगा)
+
+    # ---------------- SMART PHOTO EXTRACTION (IMPROVED) ----------------
     photo_base64 = ""
-    qr_base64 = ""
+    target_xref = None
 
     for page in doc:
         images = page.get_images(full=True)
-
         for img in images:
             xref = img[0]
             base_image = doc.extract_image(xref)
-
-            image_bytes = base_image["image"]
             width = base_image["width"]
             height = base_image["height"]
+            
+            # 1. QR कोड को हटाने के लिए: QR कोड का aspect ratio लगभग 1:1 (Square) होता है
+            aspect_ratio = width / height
+            
+            # 2. फिल्टर: फोटो आमतौर पर 0.7 से 0.9 के अनुपात में होती है (लंबी होती है चौड़ी नहीं)
+            # साथ ही बहुत छोटी या बहुत बड़ी इमेज को छोड़ दें
+            if 2000 < (width * height) < 100000:
+                if 0.6 < aspect_ratio < 1.0: # यह एक पोर्ट्रेट फोटो की पहचान है
+                    target_xref = xref
+                    # पहली ऐसी इमेज मिलते ही ब्रेक कर सकते हैं जो मापदंडों पर खरी उतरे
+                    break 
 
-            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+    if target_xref:
+        selected_img = doc.extract_image(target_xref)
+        photo_base64 = base64.b64encode(selected_img["image"]).decode("utf-8")
 
-            # QR: square & smaller width
-            if abs(width - height) < 50 and width < 250:
-                if qr_base64 == "":
-                    qr_base64 = image_base64
-                    continue
+# ... (बाकी कोड समान रहेगा)
+    # print("Final Selected Image Area:", largest_area)
 
-            # PHOTO: tall rectangle
-            if height > width and height > 120:
-                if photo_base64 == "":
-                    photo_base64 = image_base64
-                    continue
-
+    # ---------------- FINAL RETURN ----------------
     return {
         "name_english": name,
         "name_hindi": hindi_name,
         "father_english": father_name,
         "father_hindi": hindi_father,
         "dob": dob,
-        "gender": gender,
+        "gender": gender_key,
         "aadhaar_number": aadhaar_number,
         "vid_number": vid_number,
         "issued_date": issued_date,
@@ -104,5 +109,5 @@ def extract_aadhaar_details(pdf_path):
         "address_english": address,
         "address_hindi": hindi_address,
         "photo_base64": photo_base64,
-        "qr_base64": qr_base64
+        "raw_text": raw_text
     }
