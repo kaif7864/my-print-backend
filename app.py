@@ -22,7 +22,7 @@ import fitz
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # Razorpay Client Setup
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
