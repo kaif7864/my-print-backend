@@ -22,7 +22,7 @@ import fitz
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+CORS(app)
 
 # Razorpay Client Setup
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
@@ -435,5 +435,5 @@ def download_again(id_number):
 
 if __name__ == "__main__":
     import os
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.getenv("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
